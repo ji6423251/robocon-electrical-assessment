@@ -18,12 +18,15 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "stm32f4xx_hal_tim.h"
+#include "tim.h"
+#include "usart.h"
 #include "gpio.h"
-#include "stm32f4xx_hal_gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,9 +58,80 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void Buzzer_Beep(uint32_t frequency_hz, uint16_t duration_ms)
+{
+   uint32_t period;
+   if(frequency_hz == 0)
+   {
+       return; // Avoid division by zero
+   }
+   period = 1000000U / frequency_hz - 1U; // Calculate period in microseconds
+   __HAL_TIM_SET_AUTORELOAD(&htim4, period);
+    __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, (period+1U) / 2U); // 50% duty cycle
+    __HAL_TIM_SET_COUNTER(&htim4, 0);
 
+    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
+    HAL_Delay(duration_ms);
+    HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_3);
+}
+static void Buzzer_Error1(void)
+{
+    /* 音调从2400 Hz快速下降到500 Hz */
+    for (int32_t frequency = 2400;
+         frequency >= 500;
+         frequency -= 100)
+    {
+        Buzzer_Beep((uint32_t)frequency, 25);
+    }
+
+    /* 短暂停顿 */
+    HAL_Delay(80);
+
+    /* 两声低音，模拟彻底断电 */
+    Buzzer_Beep(392, 150);
+    HAL_Delay(60);
+
+    Buzzer_Beep(262, 400);
+}
+static void Buzzer_Error2(void)
+{
+    Buzzer_Beep(523, 405);  // C5
+    HAL_Delay(45);
+
+    Buzzer_Beep(392, 405);  // G4
+    HAL_Delay(45);
+
+    Buzzer_Beep(330, 270);  // E4
+    HAL_Delay(30);
+
+    Buzzer_Beep(440, 203);  // A4
+    HAL_Delay(22);
+
+    Buzzer_Beep(494, 203);  // B4
+    HAL_Delay(22);
+
+    Buzzer_Beep(440, 203);  // A4
+    HAL_Delay(22);
+
+    Buzzer_Beep(415, 203);  // G#4
+    HAL_Delay(22);
+
+    Buzzer_Beep(466, 203);  // A#4
+    HAL_Delay(22);
+
+    Buzzer_Beep(415, 203);  // G#4
+    HAL_Delay(22);
+
+    Buzzer_Beep(392, 135);  // G4
+    HAL_Delay(15);
+
+    Buzzer_Beep(294, 135);  // D4
+    HAL_Delay(15);
+
+    Buzzer_Beep(330, 810);  // E4，结尾长音
+    HAL_Delay(90);
+}
 /* USER CODE END 0 */
-
 /**
   * @brief  The application entry point.
   * @retval int
@@ -66,6 +140,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+uint8_t error_sound_select = 0;
+ // Check if the button is pressed
 
   /* USER CODE END 1 */
 
@@ -87,7 +163,14 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_TIM1_Init();
+  MX_USART2_UART_Init();
+  MX_TIM5_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
+  Buzzer_Beep(4000,200); // Beep for 200 milliseconds
+  
+  
 
   /* USER CODE END 2 */
 
@@ -98,19 +181,25 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if(HAL_GPIO_ReadPin(KEY_GPIO_Port,KEY_Pin) == GPIO_PIN_RESET){
-      HAL_GPIO_WritePin(LED_BLUE_GPIO_Port, LED_BLUE_Pin, GPIO_PIN_SET);
+    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET){
+      HAL_Delay(20); // Debounce delay
+      if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET){
+        if (error_sound_select == 0) {
+          error_sound_select = 1;
+          Buzzer_Error1();
+        } else {
+          error_sound_select = 0;
+          Buzzer_Error2();
+        }
+        while(HAL_GPIO_ReadPin(KEY_GPIO_Port,KEY_Pin) == GPIO_PIN_RESET){
+          HAL_Delay(10);
+        }
+      }
     }
-    else{
-      HAL_GPIO_WritePin(LED_BLUE_GPIO_Port, LED_BLUE_Pin, GPIO_PIN_RESET);
-    }
-    
-    
-
-    
   }
-  /* USER CODE END 3 */
 }
+  /* USER CODE END 3 */
+
 
 /**
   * @brief System Clock Configuration
